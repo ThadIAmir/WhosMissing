@@ -1,131 +1,150 @@
-# ⚽ Not-Voters-Tagger (@tagger_by_vote_bot)
+# 👥 Who's Missing
 
-A production-ready Telegram group bot built with **Python**, **Flask**, and **SQLite** that tracks attendance polls and automatically identifies and mentions group members who have not yet voted.
+A production Telegram bot that tracks attendance polls and automatically tags group members who haven't voted yet.
 
----
-
-## 📌 The Problem It Solves
-
-In recurring group gatherings (e.g., weekly football games, gaming nights, meetups):
-1. An organizer creates a poll to gauge attendance.
-2. After several hours, some members haven't voted.
-3. Organizers are forced to manually cross-reference the voter list against the group roster and type out individual tags.
-
-**Not-Voters-Tagger** automates this entire flow with a single command (`/tag_not_voters`), calculating:
-
-$$\text{Non-Voters} = \text{Eligible Members} - \text{Voters}$$
-
-and notifying remaining members using clickable Telegram mentions.
+Built with **Python**, **Flask**, **SQLite**, and **python-telegram-bot** — deployed on PythonAnywhere with zero budget.
 
 ---
 
-## ⚙️ Architecture & Technical Challenges
+## The Problem
 
-```text
-                  Telegram Cloud
-                        │
-                        │ HTTPS POST (Webhook)
-                        ▼
-            ┌─────────────────────────┐
-            │ PythonAnywhere / Server  │
-            │                         │
-            │     Flask (WSGI)        │
-            │          │              │
-            │     asyncio.run()       │
-            │          │              │
-            │   python-telegram-bot   │
-            │                         │
-            └──────────┬──────────────┘
-                       │
-                       ▼
-                 SQLite (bot.db)
+In recurring group gatherings (weekly football, gaming nights, meetups):
 
-Key Technical Challenges Solved:
+1. Someone creates a poll to check attendance.
+2. Hours pass. Some members haven't voted.
+3. The organizer manually cross-references the voter list against the group roster and types out individual tags.
 
-    No getChatMembers API in Telegram:
-        Telegram Bot API intentionally restricts bots from fetching full member rosters for privacy reasons.
-        Solution: Multi-vector discovery:
-            /sync_admins: Leverages getChatAdministrators to import all promoted friends in 1 click.
-            Silent passive listener on chat messages.
-            Real-time chat_member update listener for joins/leaves.
-            Auto-registration on poll_answer events.
+**Who's Missing** replaces step 3 with a single command: `/nudge`.
 
-    Tracking Voters via poll_answer:
-        Telegram polls are anonymous by default. Bots cannot inspect votes on polls they did not create.
-        Solution: The bot generates public, non-anonymous polls (is_anonymous=False) with unique poll_id mapping.
+---
 
-    Handling Users Without Public Usernames:
-        Standard @username tags fail for members with private handles.
-        Solution: Dynamic HTML inline links (<a href="tg://user?id=USER_ID">Name</a>) ensuring push notifications reach everyone.
+## How It Works
 
-    WSGI / Async Bridge:
-        Bridges synchronous WSGI web server requests into asynchronous python-telegram-bot v20+ methods with zero hanging event loops.
-
-    State Persistence:
-        Backed by SQLite (PRAGMA foreign_keys = ON) with indexes and cascade rules to persist active polls, registered members, votes, and chat language preferences across server worker recycles.
-
-🚀 Features
-
-    🗳️ Dynamic Poll Creation: Create customizable polls with 2–10 options and optional explanations (// explanation).
-    🔔 Targeted Reminders: /tag_not_voters tags only those who haven't cast a vote.
-    🌐 Bilingual (Persian / English): Set per-chat language using /setlang fa or /setlang en.
-    📊 Real-time Status: /status provides a quick overview of votes.
-    👥 Roster Management: View registered members with /members and sync administrators with /sync_admins.
-    🔄 Vote Retraction Handling: Accurately updates vote status if a user cancels or changes their vote.
-
-📋 Commands
-Command	Description
-/create_poll	Create a new attendance poll (multi-line format)
-/tag_not_voters	Tag all registered group members who haven't voted
-/status	View current poll vote breakdown
-/sync_admins	Fast-import group admins into member registry
-/members	List all registered members in the chat
-/setlang <fa|en>	Switch group response language
-/ping	Server health-check
-Poll Syntax Example:
+/create_poll
+Football Friday 8pm Azadi?
+I'm in 🟢
+Can't come 🔴
+Maybe 🟡
+// Bring water, park at back gate
 
 text
 
-/create_poll
-Football Friday 8:00 PM Azadi?
-I'm in 🟢
-Can't make it 🔴
-Tentative 🟡
-// Bring water and arrive 15 min early!
 
-🛠️ Local Setup & Deployment
-1. Clone & Install
+The bot creates a **public, non-anonymous** Telegram poll. As members vote, it silently tracks them. When you're ready:
 
-Bash
+/nudge
 
-git clone https://github.com/YOUR_USERNAME/not-voters-tagger.git
-cd not-voters-tagger
+text
+
+
+The bot calculates `registered members − voters`, then posts a reply to the poll mentioning everyone who hasn't responded — using `@username` tags or clickable HTML mentions for users without public handles.
+
+---
+
+## Architecture
+
+text
+
+          Telegram Cloud
+                │
+                │ HTTPS POST (Webhook + secret token)
+                ▼
+    ┌───────────────────────────┐
+    │   PythonAnywhere (WSGI)   │
+    │                           │
+    │   Flask                   │
+    │     └─ asyncio.run()      │
+    │          └─ ptb v20+     │
+    │                           │
+    └───────────┬───────────────┘
+                │
+                ▼
+          SQLite (bot.db)
+
+text
+
+
+### Technical Challenges Solved
+
+**No `getChatMembers` API.** Telegram intentionally prevents bots from fetching full member rosters. Who's Missing uses a multi-vector discovery pipeline:
+- `/sync_admins` — leverages `getChatAdministrators` for instant bulk import
+- Passive message listener — records any user who sends a message
+- `chat_member` webhook events — tracks joins and leaves in real time
+- `poll_answer` events — auto-registers anyone who votes
+
+**Anonymous polls hide voters.** Telegram strips voter IDs from anonymous polls. The bot creates non-anonymous polls (`is_anonymous=False`) to receive `poll_answer` updates with full user data.
+
+**Users without usernames.** Standard `@` mentions fail for private accounts. The bot dynamically generates HTML inline links (`<a href="tg://user?id=...">Name</a>`) that trigger push notifications for all users.
+
+**WSGI ↔ async bridge.** Bridges Flask's synchronous WSGI requests into `python-telegram-bot` v20+ async methods using `asyncio.run()` per request — clean and reliable for low-traffic group bots.
+
+---
+
+## Commands
+
+| Command | Admin Only | Description |
+|---|---|---|
+| `/create_poll` | ✅ | Create a poll (multi-line format, optional `//` explanation) |
+| `/nudge` | ✅ | Tag all registered members who haven't voted |
+| `/close_poll` | ✅ | Close the active poll and show final results |
+| `/sync_admins` | ✅ | Import all group admins into the member registry |
+| `/forget` | ✅ | Remove a member (reply to their message or `/forget @user`) |
+| `/setlang` | ✅ | Switch bot language for this group (`fa` / `en`) |
+| `/status` | — | View current vote breakdown |
+| `/members` | — | List all registered members |
+| `/ping` | — | Health check |
+
+---
+
+## Setup
+
+### 1. Install
+```bash
+git clone https://github.com/YOUR_USERNAME/whosmissing.git
+cd whosmissing
 pip install -r requirements.txt
 
-2. Configuration
-
-Copy the example config and add your credentials:
+2. Configure
 
 Bash
 
 cp config.example.py config.py
-
-Edit config.py:
-
-    BOT_TOKEN: From Telegram's @BotFather
-    WEBHOOK_SECRET: A secure random token string
+# Edit config.py with your BOT_TOKEN and WEBHOOK_SECRET
 
 3. Set Webhook
 
 Bash
 
-curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
+curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
   -d '{
-    "url": "https://<YOUR_DOMAIN>/<YOUR_WEBHOOK_SECRET>",
-    "allowed_updates": ["message", "poll_answer", "chat_member", "my_chat_member"]
+    "url": "https://<YOUR_DOMAIN>/<WEBHOOK_SECRET>",
+    "allowed_updates": ["message", "poll_answer", "chat_member", "my_chat_member"],
+    "secret_token": "<WEBHOOK_SECRET>"
   }'
 
-📄 License
+4. First Use
 
-MIT License
+    Add the bot to your group and make it an admin.
+    Promote your friends to admin temporarily.
+    Run /sync_admins to import everyone.
+    Demote friends back to regular members (they stay in the registry).
+    Create your first poll with /create_poll.
+
+Roadmap
+
+These features are planned if the project gains traction. Feedback, feature requests, and PRs are welcome!
+
+    ⏰ Scheduled reminders — auto-nudge at configurable intervals
+    ⏳ Deadlines — auto-close polls after a set time
+    📋 Multiple simultaneous polls — e.g., Friday football + Thursday gamenet
+    📊 Per-option breakdown — show how many chose each option in /status
+    📝 Poll templates — save and reuse common poll formats
+    📈 Statistics & history — attendance trends over time
+    🔘 Inline button registration — tap-to-register for non-admin members
+    💬 Reply-to-create flow — send a poll draft, reply with /create_poll
+
+Open an issue or start a discussion if any of these would be useful to you!
+
+License
+MIT
