@@ -130,6 +130,7 @@ curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
     Run /sync_admins to import everyone.
     Demote friends back to regular members (they stay in the registry).
     Create your first poll with /create_poll.
+```
 
 Roadmap
 
