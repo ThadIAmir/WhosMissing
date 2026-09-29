@@ -6,7 +6,7 @@ Built with **Python**, **Flask**, **SQLite**, and **python-telegram-bot** — de
 
 ---
 
-## The Problem
+## 🎯 The Problem
 
 In recurring group gatherings (weekly football, gaming nights, meetups):
 
@@ -18,33 +18,31 @@ In recurring group gatherings (weekly football, gaming nights, meetups):
 
 ---
 
-## How It Works
+## 🚀 How It Works
 
+**1. Create a Poll**
+```text
 /create_poll
 Football Friday 8pm Azadi?
 I'm in 🟢
 Can't come 🔴
 Maybe 🟡
 // Bring water, park at back gate
+```
+The bot creates a **public, non-anonymous** Telegram poll. As members vote, it silently tracks them.
 
-text
-
-
-The bot creates a **public, non-anonymous** Telegram poll. As members vote, it silently tracks them. When you're ready:
-
+**2. Nudge the Slackers**  
+When you're ready to round everyone up:
+```text
 /nudge
-
-text
-
-
-The bot calculates `registered members − voters`, then posts a reply to the poll mentioning everyone who hasn't responded — using `@username` tags or clickable HTML mentions for users without public handles.
+```
+The bot calculates `registered members − voters`, then posts a reply to the poll mentioning everyone who hasn't responded—using `@username` tags or clickable HTML mentions for users without public handles.
 
 ---
 
-## Architecture
+## 🏗 Architecture
 
-text
-
+```text
           Telegram Cloud
                 │
                 │ HTTPS POST (Webhook + secret token)
@@ -54,36 +52,31 @@ text
     │                           │
     │   Flask                   │
     │     └─ asyncio.run()      │
-    │          └─ ptb v20+     │
+    │          └─ ptb v20+      │
     │                           │
     └───────────┬───────────────┘
                 │
                 ▼
           SQLite (bot.db)
-
-text
-
+```
 
 ### Technical Challenges Solved
 
-**No `getChatMembers` API.** Telegram intentionally prevents bots from fetching full member rosters. Who's Missing uses a multi-vector discovery pipeline:
-- `/sync_admins` — leverages `getChatAdministrators` for instant bulk import
-- Passive message listener — records any user who sends a message
-- `chat_member` webhook events — tracks joins and leaves in real time
-- `poll_answer` events — auto-registers anyone who votes
-
-**Anonymous polls hide voters.** Telegram strips voter IDs from anonymous polls. The bot creates non-anonymous polls (`is_anonymous=False`) to receive `poll_answer` updates with full user data.
-
-**Users without usernames.** Standard `@` mentions fail for private accounts. The bot dynamically generates HTML inline links (`<a href="tg://user?id=...">Name</a>`) that trigger push notifications for all users.
-
-**WSGI ↔ async bridge.** Bridges Flask's synchronous WSGI requests into `python-telegram-bot` v20+ async methods using `asyncio.run()` per request — clean and reliable for low-traffic group bots.
+*   **No `getChatMembers` API:** Telegram intentionally prevents bots from fetching full member rosters. *Who's Missing* uses a multi-vector discovery pipeline:
+    *   `/sync_admins` — leverages `getChatAdministrators` for instant bulk import
+    *   Passive message listener — records any user who sends a message
+    *   `chat_member` webhook events — tracks joins and leaves in real time
+    *   `poll_answer` events — auto-registers anyone who votes
+*   **Anonymous polls hide voters:** Telegram strips voter IDs from anonymous polls. The bot creates non-anonymous polls (`is_anonymous=False`) to receive `poll_answer` updates with full user data.
+*   **Users without usernames:** Standard `@` mentions fail for private accounts. The bot dynamically generates HTML inline links (`<a href="tg://user?id=...">Name</a>`) that trigger push notifications for all users.
+*   **WSGI ↔ Async bridge:** Bridges Flask's synchronous WSGI requests into `python-telegram-bot` v20+ async methods using `asyncio.run()` per request—clean and reliable for low-traffic group bots.
 
 ---
 
-## Commands
+## 💬 Commands
 
 | Command | Admin Only | Description |
-|---|---|---|
+|---|:---:|---|
 | `/create_poll` | ✅ | Create a poll (multi-line format, optional `//` explanation) |
 | `/nudge` | ✅ | Tag all registered members who haven't voted |
 | `/close_poll` | ✅ | Close the active poll and show final results |
@@ -96,25 +89,23 @@ text
 
 ---
 
-## Setup
+## 🛠 Setup
 
 ### 1. Install
 ```bash
 git clone https://github.com/YOUR_USERNAME/whosmissing.git
 cd whosmissing
 pip install -r requirements.txt
+```
 
-2. Configure
-
-Bash
-
+### 2. Configure
+```bash
 cp config.example.py config.py
 # Edit config.py with your BOT_TOKEN and WEBHOOK_SECRET
+```
 
-3. Set Webhook
-
-Bash
-
+### 3. Set Webhook
+```bash
 curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
   -d '{
@@ -122,30 +113,34 @@ curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
     "allowed_updates": ["message", "poll_answer", "chat_member", "my_chat_member"],
     "secret_token": "<WEBHOOK_SECRET>"
   }'
-
-4. First Use
-
-    Add the bot to your group and make it an admin.
-    Promote your friends to admin temporarily.
-    Run /sync_admins to import everyone.
-    Demote friends back to regular members (they stay in the registry).
-    Create your first poll with /create_poll.
 ```
 
-Roadmap
+### 4. First Use
+1. Add the bot to your group and make it an admin.
+2. Promote your friends to admin temporarily.
+3. Run `/sync_admins` to import everyone.
+4. Demote friends back to regular members (they stay in the registry).
+5. Create your first poll with `/create_poll`.
+
+---
+
+## 🗺 Roadmap
 
 These features are planned if the project gains traction. Feedback, feature requests, and PRs are welcome!
 
-    ⏰ Scheduled reminders — auto-nudge at configurable intervals
-    ⏳ Deadlines — auto-close polls after a set time
-    📋 Multiple simultaneous polls — e.g., Friday football + Thursday gamenet
-    📊 Per-option breakdown — show how many chose each option in /status
-    📝 Poll templates — save and reuse common poll formats
-    📈 Statistics & history — attendance trends over time
-    🔘 Inline button registration — tap-to-register for non-admin members
-    💬 Reply-to-create flow — send a poll draft, reply with /create_poll
+- [ ] ⏰ **Scheduled reminders** — auto-nudge at configurable intervals
+- [ ] ⏳ **Deadlines** — auto-close polls after a set time
+- [ ] 📋 **Multiple simultaneous polls** — e.g., Friday football + Thursday gamenet
+- [ ] 📊 **Per-option breakdown** — show how many chose each option in `/status`
+- [ ] 📝 **Poll templates** — save and reuse common poll formats
+- [ ] 📈 **Statistics & history** — attendance trends over time
+- [ ] 🔘 **Inline button registration** — tap-to-register for non-admin members
+- [ ] 💬 **Reply-to-create flow** — send a poll draft, reply with `/create_poll`
 
-Open an issue or start a discussion if any of these would be useful to you!
+*Open an issue or start a discussion if any of these would be useful to you!*
 
-License
+---
+
+## 📜 License
+
 MIT
