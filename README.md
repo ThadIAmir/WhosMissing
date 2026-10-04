@@ -117,11 +117,10 @@ curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
 
 ### 4. First Use
 1. Add the bot to your group and make it an admin.
-2. Promote your friends to admin temporarily.
-3. Run `/sync_admins` to import everyone.
-4. Demote friends back to regular members (they stay in the registry).
-5. Create your first poll with `/create_poll`.
-
+2. Add your friends to members list using any way you like.
+3. Create your first poll with `/create_poll`.
+4. Wait for them to participate , and then use `/nudge` to tag anyone that has not voted yet.
+5. Close the poll using `/close_poll` to end the vote.
 ---
 
 ## 🗺 Roadmap
