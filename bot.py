@@ -192,6 +192,10 @@ T: dict[str, dict[str, str]] = {
         "en": "✅ Language set to <b>English</b>.",
         "fa": "✅ زبان به <b>فارسی</b> تغییر کرد.",
     },
+    "poll_explanation_long": {
+        "en": "⚠️ Explanation too long (max 200 chars).",
+        "fa": "⚠️ توضیح خیلی طولانی است (حداکثر ۲۰۰ کاراکتر).",
+    },
 }
 
 
@@ -303,6 +307,12 @@ async def _handle_create_poll(chat_id: int, user_id: int, full_text: str) -> Non
         explanation = None
         if options and options[-1].startswith("//"):
             explanation = options.pop()[2:].strip() or None
+            if explanation and len(explanation) > 200:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=t("poll_explanation_long", chat_id),
+                )
+                return
 
         if len(options) < 2 or len(options) > 10:
             await bot.send_message(chat_id=chat_id, text=t("poll_options_count", chat_id))
@@ -531,62 +541,87 @@ def _handle_chat_member_update(data: dict) -> None:
 
 @app.route(f"/{WEBHOOK_SECRET}", methods=["POST"])
 def webhook():
-    # (e) Verify Telegram secret token header
+    # (a) Verify Telegram secret token header
     secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
     if secret != WEBHOOK_SECRET:
         logger.warning("Rejected request with invalid secret token")
         return "Unauthorized", 403
 
-    data = request.get_json(force=True)
+    # (b) Reject oversized payloads (>100KB is abnormal for Telegram)
+    if request.content_length and request.content_length > 100_000:
+        logger.warning("Rejected oversized payload: %s bytes", request.content_length)
+        return "Payload too large", 413
 
-    if "chat_member" in data:
-        _handle_chat_member_update(data)
+    # (c) Parse JSON safely
+    try:
+        data = request.get_json(force=True, silent=False)
+    except Exception:
+        logger.warning("Rejected malformed JSON")
+        return "Bad request", 400
+
+    if not isinstance(data, dict):
+        return "Bad request", 400
+
+    # (d) Process update — catch all exceptions to prevent 500 retry loops
+    try:
+        if "chat_member" in data:
+            _handle_chat_member_update(data)
+            return "OK", 200
+
+        poll_answer = data.get("poll_answer")
+        if poll_answer:
+            u = poll_answer.get("user", {})
+            asyncio.run(_handle_poll_answer(
+                poll_answer["poll_id"], u["id"],
+                u.get("first_name", ""), u.get("last_name", ""), u.get("username"),
+                poll_answer.get("option_ids", []),
+            ))
+            return "OK", 200
+
+        message = data.get("message")
+        if message:
+            chat_id = message.get("chat", {}).get("id")
+            from_user = message.get("from", {})
+            text = message.get("text", "")
+            uid = from_user.get("id")
+
+            if chat_id and uid and not from_user.get("is_bot"):
+                db.save_member(
+                    chat_id, uid,
+                    from_user.get("first_name", ""),
+                    from_user.get("last_name", ""),
+                    from_user.get("username"),
+                )
+
+            if chat_id and text:
+                cmd = _extract_command(text)
+
+                if cmd == "/start":
+                    asyncio.run(_handle_start(chat_id))
+                elif cmd == "/ping":
+                    asyncio.run(_handle_ping(chat_id))
+                elif cmd == "/setlang":
+                    asyncio.run(_handle_setlang(chat_id, uid, text))
+                elif cmd == "/create_poll":
+                    asyncio.run(_handle_create_poll(chat_id, uid, text))
+                elif cmd == "/status":
+                    asyncio.run(_handle_status(chat_id))
+                elif cmd == "/members":
+                    asyncio.run(_handle_members(chat_id))
+                elif cmd == "/sync_admins":
+                    asyncio.run(_handle_sync_admins(chat_id, uid))
+                elif cmd in ("/tag_not_voters", "/nudge"):
+                    asyncio.run(_handle_nudge(chat_id, uid))
+                elif cmd == "/close_poll":
+                    asyncio.run(_handle_close_poll(chat_id, uid))
+                elif cmd == "/forget":
+                    reply_user = message.get("reply_to_message", {}).get("from", {})
+                    asyncio.run(_handle_forget(chat_id, uid, text, reply_user))
+
+    except Exception:
+        logger.exception("Unhandled error processing update")
+        # Return 200 to prevent Telegram from retrying a broken update forever
         return "OK", 200
-
-    poll_answer = data.get("poll_answer")
-    if poll_answer:
-        u = poll_answer.get("user", {})
-        asyncio.run(_handle_poll_answer(
-            poll_answer["poll_id"], u["id"],
-            u.get("first_name", ""), u.get("last_name", ""), u.get("username"),
-            poll_answer.get("option_ids", []),
-        ))
-        return "OK", 200
-
-    message = data.get("message")
-    if message:
-        chat_id = message.get("chat", {}).get("id")
-        from_user = message.get("from", {})
-        text = message.get("text", "")
-        uid = from_user.get("id")
-
-        if chat_id and uid and not from_user.get("is_bot"):
-            db.save_member(chat_id, uid, from_user.get("first_name", ""), from_user.get("last_name", ""), from_user.get("username"))
-
-        if chat_id and text:
-            cmd = _extract_command(text)
-
-            if cmd == "/start":
-                asyncio.run(_handle_start(chat_id))
-            elif cmd == "/ping":
-                asyncio.run(_handle_ping(chat_id))
-            elif cmd == "/setlang":
-                asyncio.run(_handle_setlang(chat_id, uid, text))
-            elif cmd == "/create_poll":
-                asyncio.run(_handle_create_poll(chat_id, uid, text))
-            elif cmd == "/status":
-                asyncio.run(_handle_status(chat_id))
-            elif cmd == "/members":
-                asyncio.run(_handle_members(chat_id))
-            elif cmd == "/sync_admins":
-                asyncio.run(_handle_sync_admins(chat_id, uid))
-            elif cmd in ("/tag_not_voters", "/nudge"):
-                asyncio.run(_handle_nudge(chat_id, uid))
-            elif cmd == "/close_poll":
-                asyncio.run(_handle_close_poll(chat_id, uid))
-            elif cmd == "/forget":
-                reply_user = message.get("reply_to_message", {}).get("from", {})
-                asyncio.run(_handle_forget(chat_id, uid, text, reply_user))
 
     return "OK", 200
 
